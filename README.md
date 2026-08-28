@@ -26,12 +26,14 @@ Eksport/Hero/Fil.mp4   →   2026/Beierholm/Kundecase #0711/Hero/Fil.mp4
 
 1. **Scanner** — hvert minut (konfigurerbart) gennemgås kun de mapper, der kan
    matche stien i `watch.export_template`. Resten af arkivet røres ikke.
-2. **Færdig-tjek** — en fil uploades først, når størrelse og ændringstidspunkt
-   har stået stille over flere scanninger, og filen er ældre end
-   `min_age_seconds`. Temp-filer (`.tmp`, `.part`, `~$…`) springes over, og det
-   samme gør NAS'ens eget rod — `@eaDir`, `@SynoEAStream`, `#recycle`,
-   skjulte filer — uanset hvad `ignore_patterns` er sat til. Færdig-tjekket
-   fanger langsomme SMB-kopieringer, som inotify alene ikke gør.
+2. **Færdig-tjek** — en fil uploades, så snart ingen proces har den åben (den
+   sammenlignes på inode, så det virker på tværs af mounten). Kan det ikke
+   afgøres — mangler `pid: host` — falder den tilbage til at kræve, at
+   størrelse og tidsstempel står stille over flere scanninger. Begge veje
+   fanger langsomme SMB-kopieringer, som inotify alene ikke gør. Temp-filer
+   (`.tmp`, `.part`, `~$…`) springes over, og det samme gør NAS'ens eget rod —
+   `@eaDir`, `@SynoEAStream`, `#recycle`, skjulte filer — uanset hvad
+   `ignore_patterns` er sat til.
 3. **Mapping** — sti-felterne (`{year}`, `{client}`, `{case}`) sættes ind i
    `frameio.project_template` og `frameio.folder_template`, og der navigeres ned
    gennem Frame.io-mapperne. Resultatet caches, så API'et ikke oversvømmes.
@@ -239,10 +241,13 @@ Alt er dokumenteret i [`config.example.yaml`](config.example.yaml). De vigtigste
 |-------|-----------|
 | `watch.root` | Roden af produktionsmappen set inde fra containeren |
 | `watch.export_template` | Stien fra roden ned til eksportmappen, med `{felter}` |
+| `watch.poll_interval_seconds` | Sekunder mellem scanninger |
 | `watch.recursive` | Tag også filer i undermapper under `Eksport` |
 | `frameio.create_subfolders` | Spejl de undermapper på Frame.io (ellers uploades fladt) |
 | `watch.ignore_patterns` | Filer at springe over. NAS-rod som `@eaDir` springes altid over |
-| `watch.stability.*` | Hvornår en fil regnes som færdigskrevet |
+| `watch.stability.use_open_handle_check` | Vent til ingen har filen åben (kræver `pid: host`) |
+| `watch.stability.upload_as_soon_as_closed` | Upload straks filen lukkes, i stedet for at vente |
+| `watch.stability.min_age_seconds` | Mindstealder, før en fil overhovedet overvejes |
 | `frameio.project_template` | Frame.io-projektets navn, fx `{year}` |
 | `frameio.folder_template` | Mappestien inde i projektet, fx `{client}/{case}` |
 | `frameio.version_stack_on_duplicate` | Stak samme filnavn som ny version |
