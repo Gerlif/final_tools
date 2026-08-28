@@ -1,6 +1,6 @@
 """Mapping a server path to the matching folder on Frame.io.
 
-    /volume1/FinalKlip/AktiveProjekter/2026/Beierholm/Kundecase #0711/Projektfiler/Eksport
+    /volume1/AktiveProjekter/2026/Beierholm/Kundecase #0711/Projektfiler/Eksport
       -> project "2026"  ->  folder "Beierholm"  ->  folder "Kundecase #0711"
 
 If any step has no counterpart on Frame.io the mapping fails and nothing is

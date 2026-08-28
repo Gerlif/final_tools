@@ -20,7 +20,9 @@ services:
       TZ: Europe/Copenhagen
     volumes:
       # Read-only: the watcher never writes to the production share.
-      - /volume1/FinalKlip/AktiveProjekter:/data/AktiveProjekter:ro
+      # Left side is the path on the NAS, right side is what config.yaml's
+      # watch.root points at -- change the left side only.
+      - /volume1/AktiveProjekter:/data/AktiveProjekter:ro
       - ./config.yaml:/config/config.yaml:ro
       - frameio-state:/state
     # Uncomment to let the stability check see Samba's open file handles.
