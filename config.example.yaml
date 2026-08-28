@@ -13,8 +13,9 @@ watch:
   #                         ^year ^client   ^case
   export_template: "{year}/{client}/{case}/Projektfiler/Eksport"
 
-  # Seconds between scans.
-  poll_interval_seconds: 60
+  # Seconds between scans. A scan is metadata only and costs milliseconds, so
+  # this can be low; on spinning disks a short interval keeps them awake.
+  poll_interval_seconds: 30
 
   # false: only files directly in the export folder are uploaded.
   # true : files in subfolders too, uploaded flat into the same Frame.io folder.
@@ -40,12 +41,15 @@ watch:
   # unchanged across `checks` observations spanning at least `interval_seconds`,
   # and it is at least `min_age_seconds` old.
   stability:
-    min_age_seconds: 60
+    min_age_seconds: 45
     checks: 2
     interval_seconds: 15
-    # Also require that no process holds the file open. Only works when the
-    # container runs with `pid: host`, since the Samba process lives on the NAS.
-    use_open_handle_check: false
+    # Also require that no process still holds the file open -- the only signal
+    # that actually distinguishes "finished" from "paused mid-copy". Files are
+    # matched by inode, so it works across the bind mount. Needs `pid: host` in
+    # docker-compose.yml, since the file server runs on the NAS, not in the
+    # container; without it the check can see nothing and never blocks a file.
+    use_open_handle_check: true
 
 frameio:
   # Leave empty to auto-detect when the credentials only see one account.
