@@ -41,6 +41,15 @@ class Candidate:
     def name(self) -> str:
         return normalize(self.path.name)
 
+    @property
+    def subpath(self) -> tuple[str, ...]:
+        """The folders between the export folder and this file, if any."""
+        try:
+            relative = self.path.parent.relative_to(self.export_dir.path)
+        except (AttributeError, ValueError):
+            return ()
+        return tuple(normalize(part) for part in relative.parts)
+
 
 class ExportScanner:
     """Walks the watch root down the template, level by level.
