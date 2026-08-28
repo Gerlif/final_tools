@@ -1,9 +1,17 @@
+import os
 import time
 from pathlib import Path
 
+import pytest
+
 from frameio_export_watcher.config import StabilityConfig, WatchConfig
 from frameio_export_watcher.paths import parse_template
-from frameio_export_watcher.scanner import Candidate, ExportScanner, StabilityTracker
+from frameio_export_watcher.scanner import (
+    Candidate,
+    ExportScanner,
+    OpenFileIndex,
+    StabilityTracker,
+)
 
 
 def build_tree(root: Path) -> Path:
@@ -95,3 +103,51 @@ def test_a_freshly_written_file_waits_for_min_age(tmp_path):
     fresh = _candidate(path, 10, int((now - 5) * 1_000_000_000))
     assert tracker.observe(fresh, now=now) is False
     assert tracker.observe(fresh, now=now + 120) is True
+
+
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="needs /proc")
+def test_open_file_index_sees_a_file_this_process_holds_open(tmp_path):
+    path = tmp_path / "spot.mp4"
+    path.write_bytes(b"x" * 10)
+    index = OpenFileIndex(cache_seconds=0)
+
+    assert index.holds(path) is False
+    with path.open("rb"):
+        assert index.holds(path) is True
+    assert index.holds(path) is False
+
+
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="needs /proc")
+def test_open_file_index_matches_a_second_path_to_the_same_file(tmp_path):
+    """A hard link stands in for the bind mount: same inode, different path."""
+    path = tmp_path / "spot.mp4"
+    path.write_bytes(b"x" * 10)
+    other = tmp_path / "same_file_other_path.mp4"
+    os.link(path, other)
+    index = OpenFileIndex(cache_seconds=0)
+
+    with path.open("rb"):
+        # Held open under one path, asked about under the other.
+        assert index.holds(other) is True
+
+
+def test_a_file_being_written_is_not_ready_when_the_handle_check_is_on(tmp_path):
+    path = tmp_path / "spot.mp4"
+    path.write_bytes(b"x" * 10)
+    old = int((time.time() - 600) * 1_000_000_000)
+    os.utime(path, ns=(old, old))
+    tracker = StabilityTracker(
+        StabilityConfig(
+            min_age_seconds=0,
+            checks=1,
+            interval_seconds=0,
+            use_open_handle_check=True,
+        ),
+        # No caching, so the second look sees the handle already closed.
+        open_files=OpenFileIndex(cache_seconds=0),
+    )
+    candidate = _candidate(path, 10, old)
+
+    with path.open("rb"):
+        assert tracker.observe(candidate) is False
+    assert tracker.observe(candidate) is True
