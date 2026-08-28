@@ -66,7 +66,7 @@ mkdir -p /volume1/docker/frameio-export-watcher
 cd /volume1/docker/frameio-export-watcher
 
 # Har NAS'en git:
-git clone -b claude/synology-frameio-uploader-yu9pw3 \\
+git clone -b claude/synology-frameio-uploader-yu9pw3 \
     https://github.com/Gerlif/final_tools.git .
 ```
 
@@ -120,11 +120,11 @@ Containeren starter automatisk igen efter en genstart af NAS'en
 docker compose exec frameio-export-watcher python -m frameio_export_watcher doctor
 
 # Én konkret mappe
-docker compose exec frameio-export-watcher python -m frameio_export_watcher \\
+docker compose exec frameio-export-watcher python -m frameio_export_watcher \
     resolve "/data/AktiveProjekter/2026/Beierholm/Kundecase #0711/Projektfiler/Eksport"
 
 # Kør uden at uploade noget
-docker compose exec -e DRY_RUN=true frameio-export-watcher \\
+docker compose exec -e DRY_RUN=true frameio-export-watcher \
     python -m frameio_export_watcher once
 ```
 
@@ -143,7 +143,7 @@ Kom en Frame.io-mappe først til efter en fil blev sprunget over, kan den hentes
 med:
 
 ```bash
-docker compose exec frameio-export-watcher python -m frameio_export_watcher \\
+docker compose exec frameio-export-watcher python -m frameio_export_watcher \
     retry --status no_match
 ```
 
