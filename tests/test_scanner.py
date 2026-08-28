@@ -151,3 +151,43 @@ def test_a_file_being_written_is_not_ready_when_the_handle_check_is_on(tmp_path)
     with path.open("rb"):
         assert tracker.observe(candidate) is False
     assert tracker.observe(candidate) is True
+
+
+def test_synology_bookkeeping_is_never_uploaded(tmp_path):
+    """@eaDir and its sidecars appear in every share and are not deliverables."""
+    export = build_tree(tmp_path)
+    (export / "spot.mp4").write_bytes(b"x" * 100)
+
+    eadir = export / "@eaDir"
+    eadir.mkdir()
+    (eadir / "spot.mp4@SynoEAStream").write_bytes(b"x" * 394)
+    (eadir / "SYNOPHOTO_THUMB_M.jpg").write_bytes(b"x" * 50)
+    (export / "spot.mp4@SynoEAStream").write_bytes(b"x" * 394)
+    (export / "#recycle").mkdir()
+    (export / "#recycle" / "gammel.mov").write_bytes(b"x" * 50)
+
+    scanner = ExportScanner(make_config(tmp_path, recursive=True))
+    assert {c.name for c in scanner.scan()} == {"spot.mp4"}
+
+
+def test_system_noise_is_ignored_even_with_custom_ignore_patterns(tmp_path):
+    """A user list replaces the defaults; it must not re-enable @eaDir."""
+    export = build_tree(tmp_path)
+    (export / "spot.mp4").write_bytes(b"x" * 100)
+    (export / "@eaDir").mkdir()
+    (export / "@eaDir" / "spot.mp4@SynoEAStream").write_bytes(b"x" * 394)
+
+    scanner = ExportScanner(
+        make_config(tmp_path, recursive=True, ignore_patterns=("*.aaf",))
+    )
+    assert {c.name for c in scanner.scan()} == {"spot.mp4"}
+
+
+def test_eadir_is_not_mistaken_for_a_year_or_client_folder(tmp_path):
+    build_tree(tmp_path)
+    stray = tmp_path / "@eaDir" / "Kunde" / "Sag" / "Projektfiler" / "Eksport"
+    stray.mkdir(parents=True)
+    (stray / "junk.mp4").write_bytes(b"x" * 100)
+
+    dirs = ExportScanner(make_config(tmp_path)).find_export_dirs()
+    assert all("@eaDir" not in str(d.path) for d in dirs)
