@@ -9,12 +9,13 @@ services:
     image: frameio-export-watcher:1.0.0
     container_name: frameio-export-watcher
     restart: unless-stopped
-    # Synology shares often have no POSIX permissions at all (`d---------+`),
-    # with access granted only through DSM's ACLs. If PUID/PGID above cannot
-    # read the share, uncomment this to run as root instead -- it overrides the
-    # image's user at runtime, so no rebuild is needed. The share is mounted
-    # read-only, so the container still cannot write to it.
-    #user: "0:0"
+    # Synology shares commonly have no POSIX permissions at all (`d---------+`),
+    # with access granted only through DSM's ACLs -- there is then no ordinary
+    # UID that can read them, so the watcher runs as root. This overrides the
+    # PUID/PGID above; the share is mounted read-only, so the container still
+    # cannot write to it. Comment this line out to use PUID/PGID instead, on a
+    # share whose POSIX permissions do grant access.
+    user: "0:0"
     # Credentials come from .env next to this file. Compose passes every
     # variable in it straight into the container, so switching between IMS
     # credentials and a legacy token needs no change here. A missing .env
