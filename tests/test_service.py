@@ -1,5 +1,7 @@
 """End-to-end: disk -> mapping -> upload -> state, with a fake Frame.io."""
 
+import logging
+import time
 from pathlib import Path
 
 from frameio_export_watcher.config import (
@@ -189,6 +191,41 @@ def test_heartbeat_is_written(tmp_path):
     api, session, state, service, config = build(tmp_path)
     service._heartbeat()
     assert config.heartbeat_file.exists()
+
+
+def test_heartbeat_is_not_rewritten_on_every_scan(tmp_path):
+    """At a ten second poll the file would otherwise be written 8640x a day."""
+    api, session, state, service, config = build(tmp_path)
+    service._heartbeat()
+    first = config.heartbeat_file.stat().st_mtime_ns
+
+    service._heartbeat()
+    assert config.heartbeat_file.stat().st_mtime_ns == first
+
+    service._heartbeat(force=True)
+    assert config.heartbeat_file.exists()
+
+
+def test_a_quiet_scan_does_not_log_at_info(tmp_path, caplog):
+    api, session, state, service, config = build(tmp_path)
+    mirror_on_frameio(api)
+    make_export(config.watch.root)
+
+    service._last_summary = time.monotonic()  # the startup summary already ran
+    with caplog.at_level(logging.INFO):
+        service._log_cycle(service.run_cycle(wait=True))
+    assert caplog.records == []
+
+
+def test_a_scan_that_queues_something_is_logged(tmp_path, caplog):
+    api, session, state, service, config = build(tmp_path)
+    mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    (export / "spot.mp4").write_bytes(b"a" * 10)
+
+    with caplog.at_level(logging.INFO):
+        service._log_cycle(service.run_cycle(wait=True))
+    assert any("scan done" in r.message for r in caplog.records)
 
 
 def test_baseline_marks_existing_files_so_the_backlog_is_never_uploaded(tmp_path):
