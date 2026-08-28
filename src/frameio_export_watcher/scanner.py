@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from .config import StabilityConfig, WatchConfig
+from .config import SYSTEM_IGNORE_PATTERNS, StabilityConfig, WatchConfig
 from .paths import Segment, normalize
 
 log = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class ExportScanner:
             return
 
         for entry in entries:
-            if entry.name.startswith("."):
+            if self._is_ignored(entry.name):
                 continue
             try:
                 if not entry.is_dir():
@@ -142,9 +142,10 @@ class ExportScanner:
             )
 
     def _is_ignored(self, name: str) -> bool:
+        """True for temp files, and for NAS/OS bookkeeping in any case."""
         return any(
             fnmatch.fnmatch(name, pattern) or fnmatch.fnmatch(name.lower(), pattern.lower())
-            for pattern in self._config.ignore_patterns
+            for pattern in (*SYSTEM_IGNORE_PATTERNS, *self._config.ignore_patterns)
         )
 
 
