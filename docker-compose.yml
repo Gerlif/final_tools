@@ -30,6 +30,13 @@ services:
     environment:
       LOG_LEVEL: INFO
       TZ: Europe/Copenhagen
+    # Docker's default json-file driver never rotates, so a long-running
+    # service can quietly fill the volume with its own log.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       # Read-only: the watcher never writes to the production share.
       # Left side is the path on the NAS, right side is what config.yaml's
