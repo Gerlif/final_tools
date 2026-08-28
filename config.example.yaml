@@ -18,8 +18,9 @@ watch:
   poll_interval_seconds: 30
 
   # false: only files directly in the export folder are uploaded.
-  # true : files in subfolders too, uploaded flat into the same Frame.io folder.
-  recursive: false
+  # true : files in subfolders too. Where they land is decided by
+  #        frameio.create_subfolders below.
+  recursive: true
 
   # Files smaller than this are ignored (bytes).
   min_file_size_bytes: 1
@@ -69,6 +70,14 @@ frameio:
 
   # Upload a file whose name already exists as a new version of it.
   version_stack_on_duplicate: true
+
+  # With watch.recursive on, mirror the folders below the export folder on
+  # Frame.io, creating them when they are missing:
+  #     Eksport/Hero/Fil.mp4  ->  <sag>/Hero/Fil.mp4
+  # Set to false to upload everything flat into the case folder instead.
+  # Note this never applies to the project, client or case folders above the
+  # export folder -- those are only ever matched, never created.
+  create_subfolders: true
 
   # How long project/folder lookups are cached (seconds).
   lookup_cache_seconds: 300
