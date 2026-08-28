@@ -11,9 +11,16 @@ Synology NAS.
 Frame.io:  projekt "2026"  →  mappe "Beierholm"  →  mappe "Kundecase #0711"
 ```
 
-Findes der ikke et tilsvarende projekt eller en tilsvarende mappe på Frame.io,
-uploades der ingenting. Værktøjet opretter **aldrig** mapper på Frame.io —
-mappestrukturen ejes af jeres bot.
+Findes der ikke et tilsvarende projekt eller en tilsvarende sagsmappe på
+Frame.io, uploades der ingenting. Værktøjet opretter **aldrig** projekt-,
+kunde- eller sagsmapper — den struktur ejes af jeres bot.
+
+Undermapper *inde i* eksportmappen spejles derimod automatisk, og oprettes hvis
+de mangler:
+
+```
+Eksport/Hero/Fil.mp4   →   2026/Beierholm/Kundecase #0711/Hero/Fil.mp4
+```
 
 ## Sådan virker det
 
@@ -29,9 +36,11 @@ mappestrukturen ejes af jeres bot.
 4. **Upload** — Frame.io V4 lokal upload: filen oprettes med navn og størrelse,
    Frame.io svarer med presignede S3-URL'er, og hver chunk PUT'es med
    `x-amz-acl: private`. Til sidst pollet upload-status til bekræftelse.
-5. **Versioner** — findes filnavnet allerede i målmappen, lægges den nye fil
+5. **Undermapper** — ligger filen i en undermappe under `Eksport`, oprettes den
+   samme mappe på Frame.io under sagsmappen, og filen lægges deri.
+6. **Versioner** — findes filnavnet allerede i målmappen, lægges den nye fil
    oven på som ny version (version stack) i stedet for at ligge ved siden af.
-6. **Hukommelse** — hver fil skrives i en SQLite-database (sti, størrelse,
+7. **Hukommelse** — hver fil skrives i en SQLite-database (sti, størrelse,
    mtime, status). En genstart uploader derfor aldrig noget igen. Ændres filen,
    betragtes den som en ny version og uploades igen.
 
@@ -228,7 +237,8 @@ Alt er dokumenteret i [`config.example.yaml`](config.example.yaml). De vigtigste
 |-------|-----------|
 | `watch.root` | Roden af produktionsmappen set inde fra containeren |
 | `watch.export_template` | Stien fra roden ned til eksportmappen, med `{felter}` |
-| `watch.recursive` | Tag også filer i undermapper (uploades fladt) |
+| `watch.recursive` | Tag også filer i undermapper under `Eksport` |
+| `frameio.create_subfolders` | Spejl de undermapper på Frame.io (ellers uploades fladt) |
 | `watch.stability.*` | Hvornår en fil regnes som færdigskrevet |
 | `frameio.project_template` | Frame.io-projektets navn, fx `{year}` |
 | `frameio.folder_template` | Mappestien inde i projektet, fx `{client}/{case}` |
