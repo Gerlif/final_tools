@@ -11,6 +11,7 @@ from pathlib import Path
 STATUS_UPLOADED = "uploaded"
 STATUS_FAILED = "failed"
 STATUS_NO_MATCH = "no_match"
+STATUS_BASELINE = "baseline"
 STATUS_GIVEN_UP = "given_up"
 
 _SCHEMA = """
