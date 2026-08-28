@@ -25,8 +25,11 @@ watch:
   # Files smaller than this are ignored (bytes).
   min_file_size_bytes: 1
 
+  # Half-written files to skip. Setting this replaces the list below, but not
+  # the built-in one: @eaDir, *@SynoEAStream, #recycle, dotfiles, Thumbs.db and
+  # the like are always ignored, since they are NAS and OS bookkeeping rather
+  # than anything anyone exported.
   ignore_patterns:
-    - ".*"
     - "~$*"
     - "*.tmp"
     - "*.temp"
@@ -35,8 +38,6 @@ watch:
     - "*.crdownload"
     - "*.download"
     - "*.filepart"
-    - "Thumbs.db"
-    - "desktop.ini"
 
   # A file is considered finished when its size and modification time have been
   # unchanged across `checks` observations spanning at least `interval_seconds`,
