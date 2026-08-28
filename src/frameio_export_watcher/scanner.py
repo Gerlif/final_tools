@@ -148,9 +148,12 @@ class StabilityTracker:
     copies and applications that write in bursts, which inotify alone does not.
     """
 
-    def __init__(self, config: StabilityConfig) -> None:
+    def __init__(
+        self, config: StabilityConfig, open_files: "OpenFileIndex | None" = None
+    ) -> None:
         self._config = config
         self._seen: dict[str, tuple[int, int, int, float]] = {}
+        self._open_files = open_files or OpenFileIndex()
 
     def observe(self, candidate: Candidate, now: float | None = None) -> bool:
         """Record an observation; return True when the file looks complete."""
@@ -171,7 +174,7 @@ class StabilityTracker:
             return False
         if now - first_seen < self._config.interval_seconds:
             return False
-        if self._config.use_open_handle_check and _has_open_handle(candidate.path):
+        if self._config.use_open_handle_check and self._open_files.holds(candidate.path):
             log.debug("%s still has an open file handle", candidate.path)
             return False
         return True
@@ -197,32 +200,69 @@ def _access_hint(exc: OSError) -> str:
     )
 
 
-def _has_open_handle(path: Path) -> bool:
-    """Best-effort check for an open file descriptor pointing at ``path``.
+class OpenFileIndex:
+    """Which files any visible process currently holds open.
 
-    Only sees processes visible in this container's PID namespace, so in Docker
-    it needs ``pid: host`` to notice a Samba process still writing the file.
+    Matching is by (device, inode), not by path: the watcher sees the share as
+    /data/... while the Samba process on the NAS has the very same file open as
+    /volume1/..., so the two paths never compare equal. The inode does.
+
+    One walk of /proc answers for every file in a scan, so the snapshot is
+    cached for a couple of seconds rather than rebuilt per file.
     """
-    try:
-        target = os.path.realpath(path)
-    except OSError:
-        return False
+
+    def __init__(self, cache_seconds: float = 2.0) -> None:
+        self._cache_seconds = cache_seconds
+        self._expires = 0.0
+        self._open: set[tuple[int, int]] = set()
+        self._warned = False
+
+    def holds(self, path: Path) -> bool:
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return False
+        return (stat.st_dev, stat.st_ino) in self._snapshot()
+
+    def _snapshot(self) -> set[tuple[int, int]]:
+        now = time.monotonic()
+        if now < self._expires:
+            return self._open
+        self._open, processes = _open_inodes()
+        self._expires = now + self._cache_seconds
+        if processes <= 2 and not self._warned:
+            self._warned = True
+            log.warning(
+                "the open-handle check can only see %d process(es); without "
+                "`pid: host` in docker-compose.yml it cannot see the NAS's file "
+                "server and will never report a file as still being written",
+                processes,
+            )
+        return self._open
+
+
+def _open_inodes() -> tuple[set[tuple[int, int]], int]:
+    """Every (device, inode) held open by a visible process, and the count."""
+    open_inodes: set[tuple[int, int]] = set()
+    processes = 0
 
     proc = Path("/proc")
     if not proc.is_dir():
-        return False
+        return open_inodes, 0
 
     for pid_dir in proc.iterdir():
         if not pid_dir.name.isdigit():
             continue
-        fd_dir = pid_dir / "fd"
+        processes += 1
         try:
-            for fd in fd_dir.iterdir():
-                try:
-                    if os.path.realpath(fd) == target:
-                        return True
-                except OSError:
-                    continue
+            descriptors = list((pid_dir / "fd").iterdir())
         except OSError:
+            # The process exited, or is not ours to inspect.
             continue
-    return False
+        for descriptor in descriptors:
+            try:
+                stat = os.stat(descriptor)
+            except OSError:
+                continue
+            open_inodes.add((stat.st_dev, stat.st_ino))
+    return open_inodes, processes
