@@ -191,3 +191,74 @@ def test_eadir_is_not_mistaken_for_a_year_or_client_folder(tmp_path):
 
     dirs = ExportScanner(make_config(tmp_path)).find_export_dirs()
     assert all("@eaDir" not in str(d.path) for d in dirs)
+
+
+class _StubIndex:
+    """An open-handle index with controllable answers."""
+
+    def __init__(self, *, held: bool, usable: bool = True) -> None:
+        self._held = held
+        self.is_usable = usable
+
+    def holds(self, path) -> bool:
+        return self._held
+
+
+def _tracker(*, held: bool, usable: bool = True, **stability):
+    defaults = dict(
+        min_age_seconds=0,
+        checks=2,
+        interval_seconds=15,
+        use_open_handle_check=True,
+        upload_as_soon_as_closed=True,
+    )
+    defaults.update(stability)
+    return StabilityTracker(
+        StabilityConfig(**defaults), open_files=_StubIndex(held=held, usable=usable)
+    )
+
+
+def test_a_closed_file_is_ready_on_the_very_first_sighting(tmp_path):
+    tracker = _tracker(held=False)
+    now = time.time()
+    candidate = _candidate(tmp_path / "spot.mp4", 100, int((now - 30) * 1_000_000_000))
+
+    # No second observation, no 15 second wait.
+    assert tracker.observe(candidate, now=now) is True
+
+
+def test_a_file_still_open_is_never_ready_however_long_it_sits(tmp_path):
+    tracker = _tracker(held=True)
+    now = time.time()
+    candidate = _candidate(tmp_path / "spot.mp4", 100, int((now - 3600) * 1_000_000_000))
+
+    assert tracker.observe(candidate, now=now) is False
+    assert tracker.observe(candidate, now=now + 600) is False
+
+
+def test_the_fast_path_still_respects_min_age(tmp_path):
+    tracker = _tracker(held=False, min_age_seconds=30)
+    now = time.time()
+    fresh = _candidate(tmp_path / "spot.mp4", 100, int((now - 5) * 1_000_000_000))
+
+    assert tracker.observe(fresh, now=now) is False
+    assert tracker.observe(fresh, now=now + 60) is True
+
+
+def test_an_unusable_index_falls_back_to_watching_the_file(tmp_path):
+    """Without pid: host, 'nobody has it open' is meaningless -- do not trust it."""
+    tracker = _tracker(held=False, usable=False)
+    now = time.time()
+    candidate = _candidate(tmp_path / "spot.mp4", 100, int((now - 30) * 1_000_000_000))
+
+    assert tracker.observe(candidate, now=now) is False
+    assert tracker.observe(candidate, now=now + 20) is True
+
+
+def test_without_the_fast_path_the_old_rule_applies(tmp_path):
+    tracker = _tracker(held=False, upload_as_soon_as_closed=False)
+    now = time.time()
+    candidate = _candidate(tmp_path / "spot.mp4", 100, int((now - 30) * 1_000_000_000))
+
+    assert tracker.observe(candidate, now=now) is False
+    assert tracker.observe(candidate, now=now + 20) is True
