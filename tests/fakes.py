@@ -70,6 +70,10 @@ class FakeFrameio:
             items = [item for item in items if item.type == asset_type]
         return list(items)
 
+    def create_folder(self, account_id, parent_id, name) -> Asset:
+        self.calls.append(("create_folder", parent_id, name))
+        return self.add_folder(parent_id, name)
+
     def create_local_upload(self, account_id, folder_id, name, file_size) -> UploadTarget:
         file_id = _new_id("file")
         self.calls.append(("create_local_upload", folder_id, name, file_size))
