@@ -16,8 +16,26 @@ import yaml
 
 from .paths import Template, parse_template
 
+# Bookkeeping the NAS and the desktop operating systems scatter through every
+# share. None of it is ever a deliverable, and uploading it once was enough to
+# put an "@eaDir" folder on Frame.io, so this list applies whatever
+# watch.ignore_patterns is set to.
+SYSTEM_IGNORE_PATTERNS = (
+    ".*",                    # .DS_Store, ._resource forks, .AppleDouble, ...
+    "@eaDir",                # Synology thumbnails and index data
+    "*@SynoEAStream",        # Synology extended-attribute sidecars
+    "*@SynoResource",
+    "#recycle",              # Synology recycle bin
+    "#snapshot",
+    "Thumbs.db",
+    "desktop.ini",
+    "Network Trash Folder",
+    "Temporary Items",
+)
+
+# Work in progress, as opposed to system noise. Replaced wholesale when
+# watch.ignore_patterns is given.
 DEFAULT_IGNORE_PATTERNS = (
-    ".*",
     "~$*",
     "*.tmp",
     "*.temp",
@@ -26,8 +44,6 @@ DEFAULT_IGNORE_PATTERNS = (
     "*.crdownload",
     "*.download",
     "*.filepart",
-    "Thumbs.db",
-    "desktop.ini",
 )
 
 DEFAULT_IMS_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3"
