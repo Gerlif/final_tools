@@ -29,6 +29,14 @@ _TERMINAL_STATUSES = frozenset(
     {STATUS_UPLOADED, STATUS_NO_MATCH, STATUS_GIVEN_UP, STATUS_BASELINE}
 )
 
+# A scan that found nothing new is not worth a log line every few seconds, but
+# the log should still show the watcher is alive.
+_IDLE_SUMMARY_SECONDS = 600.0
+
+# The healthcheck allows the heartbeat to be 15 minutes old, so there is no
+# reason to rewrite the file on every scan.
+_HEARTBEAT_MIN_INTERVAL_SECONDS = 60.0
+
 
 @dataclass
 class CycleStats:
@@ -70,6 +78,8 @@ class WatcherService:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._in_flight: set[str] = set()
+        self._last_summary = 0.0
+        self._last_heartbeat = 0.0
         self._executor = ThreadPoolExecutor(
             max_workers=config.upload.max_concurrent_files,
             thread_name_prefix="upload",
@@ -90,13 +100,7 @@ class WatcherService:
         while not self._stop.is_set():
             started = time.monotonic()
             try:
-                stats = self.run_cycle()
-                log.info(
-                    "scan done: %d file(s) seen, %d queued, %d in flight",
-                    stats.seen,
-                    stats.queued,
-                    len(self._in_flight),
-                )
+                self._log_cycle(self.run_cycle())
             except ResolveError as exc:
                 log.error("configuration or account problem: %s", exc)
             except Exception:  # keep the daemon alive across unexpected errors
@@ -312,12 +316,33 @@ class WatcherService:
 
     # -- misc -------------------------------------------------------------
 
-    def _heartbeat(self) -> None:
+    def _log_cycle(self, stats: CycleStats) -> None:
+        """Report a scan, without a line per poll when nothing is happening."""
+        in_flight = len(self._in_flight)
+        message = "scan done: %d file(s) seen, %d queued, %d in flight"
+        arguments = (stats.seen, stats.queued, in_flight)
+
+        if stats.queued or in_flight or stats.failed:
+            log.info(message, *arguments)
+            self._last_summary = time.monotonic()
+            return
+
+        log.debug(message, *arguments)
+        now = time.monotonic()
+        if now - self._last_summary >= _IDLE_SUMMARY_SECONDS:
+            self._last_summary = now
+            log.info("watching %d file(s); nothing new to upload", stats.seen)
+
+    def _heartbeat(self, force: bool = False) -> None:
         target = self._config.heartbeat_file
         if not target:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_heartbeat < _HEARTBEAT_MIN_INTERVAL_SECONDS:
             return
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(str(int(time.time())), encoding="utf-8")
+            self._last_heartbeat = now
         except OSError as exc:
             log.warning("could not write heartbeat file %s: %s", target, exc)
