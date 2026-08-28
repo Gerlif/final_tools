@@ -85,6 +85,17 @@ frameio:
   # Upload a file whose name already exists as a new version of it.
   version_stack_on_duplicate: true
 
+  # Also treat a version marker as the same asset, so
+  #     Beierholm - HERO v1.1.mp4    lands on top of  Beierholm - HERO v1.mp4
+  #     CBS SCM_6 sek_V03_1x1.mov    lands on top of  CBS SCM_6 sek_V02_1x1.mov
+  # The marker may sit anywhere (v1, v1.0, V02, _v3), and everything else in
+  # the name is kept -- so a 16x9 and a 9x16 are two deliverables and never
+  # versions of each other. Separator styles are ignored, so "CBS - Girltalk"
+  # and "CBS_Girltalk" are the same. The file type must match: a .wav is never
+  # a version of a .mp4. An export with no marker of its own only ever stacks
+  # on an identical name.
+  stack_version_suffixes: true
+
   # With watch.recursive on, mirror the folders below the export folder on
   # Frame.io, creating them when they are missing:
   #     Eksport/Hero/Fil.mp4  ->  <sag>/Hero/Fil.mp4
