@@ -80,7 +80,7 @@ class ExportScanner:
         try:
             entries = sorted(os.scandir(current.path), key=lambda e: e.name)
         except OSError as exc:
-            log.warning("cannot list %s: %s", current.path, exc)
+            log.warning("cannot list %s: %s%s", current.path, exc, _access_hint(exc))
             return
 
         for entry in entries:
@@ -105,7 +105,7 @@ class ExportScanner:
         try:
             entries = sorted(os.scandir(directory), key=lambda e: e.name)
         except OSError as exc:
-            log.warning("cannot list %s: %s", directory, exc)
+            log.warning("cannot list %s: %s%s", directory, exc, _access_hint(exc))
             return
 
         for entry in entries:
@@ -184,6 +184,17 @@ class StabilityTracker:
         for key in list(self._seen):
             if key not in keep:
                 del self._seen[key]
+
+
+def _access_hint(exc: OSError) -> str:
+    """Name the user we run as, so a denied mount points at PUID/PGID."""
+    if not isinstance(exc, PermissionError):
+        return ""
+    return (
+        f" -- this container runs as uid={os.getuid()} gid={os.getgid()}, "
+        "which cannot read that path; set PUID/PGID in docker-compose.yml to a "
+        "user that can, then rebuild with --build"
+    )
 
 
 def _has_open_handle(path: Path) -> bool:
