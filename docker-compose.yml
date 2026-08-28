@@ -9,10 +9,13 @@ services:
     image: frameio-export-watcher:1.0.0
     container_name: frameio-export-watcher
     restart: unless-stopped
+    # Credentials come from .env next to this file. Compose passes every
+    # variable in it straight into the container, so switching between IMS
+    # credentials and a legacy token needs no change here. A missing .env
+    # fails the start with a clear error instead of starting without secrets.
+    env_file:
+      - .env
     environment:
-      FRAMEIO_CLIENT_ID: "${FRAMEIO_CLIENT_ID}"
-      FRAMEIO_CLIENT_SECRET: "${FRAMEIO_CLIENT_SECRET}"
-      # FRAMEIO_ACCOUNT_ID: ""
       LOG_LEVEL: INFO
       TZ: Europe/Copenhagen
     volumes:
