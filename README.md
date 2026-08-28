@@ -28,8 +28,10 @@ Eksport/Hero/Fil.mp4   →   2026/Beierholm/Kundecase #0711/Hero/Fil.mp4
    matche stien i `watch.export_template`. Resten af arkivet røres ikke.
 2. **Færdig-tjek** — en fil uploades først, når størrelse og ændringstidspunkt
    har stået stille over flere scanninger, og filen er ældre end
-   `min_age_seconds`. Temp-filer (`.tmp`, `.part`, `~$…`, skjulte filer) springes
-   over. Det fanger langsomme SMB-kopieringer, som inotify alene ikke gør.
+   `min_age_seconds`. Temp-filer (`.tmp`, `.part`, `~$…`) springes over, og det
+   samme gør NAS'ens eget rod — `@eaDir`, `@SynoEAStream`, `#recycle`,
+   skjulte filer — uanset hvad `ignore_patterns` er sat til. Færdig-tjekket
+   fanger langsomme SMB-kopieringer, som inotify alene ikke gør.
 3. **Mapping** — sti-felterne (`{year}`, `{client}`, `{case}`) sættes ind i
    `frameio.project_template` og `frameio.folder_template`, og der navigeres ned
    gennem Frame.io-mapperne. Resultatet caches, så API'et ikke oversvømmes.
@@ -239,6 +241,7 @@ Alt er dokumenteret i [`config.example.yaml`](config.example.yaml). De vigtigste
 | `watch.export_template` | Stien fra roden ned til eksportmappen, med `{felter}` |
 | `watch.recursive` | Tag også filer i undermapper under `Eksport` |
 | `frameio.create_subfolders` | Spejl de undermapper på Frame.io (ellers uploades fladt) |
+| `watch.ignore_patterns` | Filer at springe over. NAS-rod som `@eaDir` springes altid over |
 | `watch.stability.*` | Hvornår en fil regnes som færdigskrevet |
 | `frameio.project_template` | Frame.io-projektets navn, fx `{year}` |
 | `frameio.folder_template` | Mappestien inde i projektet, fx `{client}/{case}` |
