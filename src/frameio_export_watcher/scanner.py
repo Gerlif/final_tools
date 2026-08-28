@@ -152,10 +152,12 @@ class ExportScanner:
 class StabilityTracker:
     """Decides whether a file has stopped changing.
 
-    A file counts as finished when its size and mtime have been identical
-    across ``checks`` observations spread over at least ``interval_seconds``,
-    and the file is at least ``min_age_seconds`` old. This survives slow SMB
-    copies and applications that write in bursts, which inotify alone does not.
+    The direct answer is whether any process still holds the file open. Where
+    that cannot be established -- no ``pid: host``, or the check switched off
+    -- the fallback is inference: size and mtime identical across ``checks``
+    observations spread over at least ``interval_seconds``. Either way a file
+    must be at least ``min_age_seconds`` old, and both survive slow SMB copies
+    and applications that write in bursts, which inotify alone does not.
     """
 
     def __init__(
@@ -180,12 +182,20 @@ class StabilityTracker:
         age = now - (candidate.mtime_ns / 1_000_000_000)
         if age < self._config.min_age_seconds:
             return False
+
+        if self._config.use_open_handle_check:
+            if self._open_files.holds(candidate.path):
+                log.debug("%s still has an open file handle", candidate.path)
+                return False
+            if self._config.upload_as_soon_as_closed and self._open_files.is_usable:
+                # Nobody holds the file open. Watching it stay the same size
+                # for another round would only be a slower way of learning
+                # what we already know.
+                return True
+
         if count < self._config.checks:
             return False
         if now - first_seen < self._config.interval_seconds:
-            return False
-        if self._config.use_open_handle_check and self._open_files.holds(candidate.path):
-            log.debug("%s still has an open file handle", candidate.path)
             return False
         return True
 
@@ -225,7 +235,18 @@ class OpenFileIndex:
         self._cache_seconds = cache_seconds
         self._expires = 0.0
         self._open: set[tuple[int, int]] = set()
+        self._processes = 0
         self._warned = False
+
+    @property
+    def is_usable(self) -> bool:
+        """Whether the last snapshot could see the machine's processes at all.
+
+        Without ``pid: host`` only the container's own handful is visible, and
+        "nobody has this file open" would then be true of every file on the
+        NAS -- an answer worth nothing. Check this before trusting a negative.
+        """
+        return self._processes > 2
 
     def holds(self, path: Path) -> bool:
         try:
@@ -239,6 +260,7 @@ class OpenFileIndex:
         if now < self._expires:
             return self._open
         self._open, processes = _open_inodes()
+        self._processes = processes
         self._expires = now + self._cache_seconds
         if processes <= 2 and not self._warned:
             self._warned = True
