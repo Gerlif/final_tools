@@ -14,6 +14,7 @@ from .frameio import FrameioClient
 from .resolver import Destination, DestinationResolver, NoMatch, ResolveError
 from .scanner import Candidate, ExportScanner, StabilityTracker
 from .state import (
+    STATUS_BASELINE,
     STATUS_FAILED,
     STATUS_GIVEN_UP,
     STATUS_NO_MATCH,
@@ -24,7 +25,9 @@ from .uploader import UploadError, Uploader
 
 log = logging.getLogger(__name__)
 
-_TERMINAL_STATUSES = frozenset({STATUS_UPLOADED, STATUS_NO_MATCH, STATUS_GIVEN_UP})
+_TERMINAL_STATUSES = frozenset(
+    {STATUS_UPLOADED, STATUS_NO_MATCH, STATUS_GIVEN_UP, STATUS_BASELINE}
+)
 
 
 @dataclass
@@ -129,6 +132,32 @@ class WatcherService:
             for future in futures:
                 future.result()
         return stats
+
+    def baseline(self, *, dry_run: bool = False) -> int:
+        """Record every file present right now as already handled.
+
+        Pointing the watcher at an archive that already holds finished exports
+        would otherwise upload the whole backlog on the second scan. Running
+        this once before the first start makes "from now on" the starting
+        point. Files recorded this way can be released again with
+        ``retry --status baseline``.
+        """
+        marked = 0
+        for candidate in self._scanner.scan():
+            record = self._state.get(str(candidate.path))
+            if record is not None and record.matches(candidate.size, candidate.mtime_ns):
+                # Already uploaded, skipped or baselined in this exact form.
+                continue
+            if not dry_run:
+                self._state.record(
+                    str(candidate.path),
+                    size=candidate.size,
+                    mtime_ns=candidate.mtime_ns,
+                    status=STATUS_BASELINE,
+                    error="already present when the watcher was set up",
+                )
+            marked += 1
+        return marked
 
     def _is_ready(self, candidate: Candidate, *, wait_for_stability: bool) -> bool:
         if self._stability.observe(candidate):
