@@ -15,7 +15,7 @@ watch:
 
   # Seconds between scans. A scan is metadata only and costs milliseconds, so
   # this can be low; on spinning disks a short interval keeps them awake.
-  poll_interval_seconds: 30
+  poll_interval_seconds: 10
 
   # false: only files directly in the export folder are uploaded.
   # true : files in subfolders too. Where they land is decided by
@@ -39,19 +39,32 @@ watch:
     - "*.download"
     - "*.filepart"
 
-  # A file is considered finished when its size and modification time have been
-  # unchanged across `checks` observations spanning at least `interval_seconds`,
-  # and it is at least `min_age_seconds` old.
   stability:
-    min_age_seconds: 45
-    checks: 2
-    interval_seconds: 15
-    # Also require that no process still holds the file open -- the only signal
-    # that actually distinguishes "finished" from "paused mid-copy". Files are
+    # A file must be this old before it is considered at all. Keep a few
+    # seconds here even with the handle check on, to cover an application that
+    # closes and immediately reopens the file.
+    min_age_seconds: 5
+
+    # Require that no process still holds the file open -- the only signal that
+    # actually distinguishes "finished" from "paused mid-copy". Files are
     # matched by inode, so it works across the bind mount. Needs `pid: host` in
     # docker-compose.yml, since the file server runs on the NAS, not in the
     # container; without it the check can see nothing and never blocks a file.
     use_open_handle_check: true
+
+    # With the handle check on, upload as soon as the file is closed instead of
+    # watching it hold still first. The waiting below existed only to infer
+    # what the handle check answers outright, so this is the difference between
+    # seconds and a minute. Ignored -- and the waiting applies again -- if
+    # `pid: host` is missing, since "nobody has it open" would then be true of
+    # every file on the NAS.
+    upload_as_soon_as_closed: true
+
+    # Fallback for when the handle check is off or cannot see the host: the
+    # file must be unchanged across `checks` observations spanning at least
+    # `interval_seconds`.
+    checks: 2
+    interval_seconds: 15
 
 frameio:
   # Leave empty to auto-detect when the credentials only see one account.
