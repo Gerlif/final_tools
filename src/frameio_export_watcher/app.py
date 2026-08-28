@@ -59,6 +59,7 @@ def build_application(config: AppConfig) -> Application:
         session=session,
         case_sensitive_names=config.frameio.case_sensitive_names,
         version_stack_on_duplicate=config.frameio.version_stack_on_duplicate,
+        stack_version_suffixes=config.frameio.stack_version_suffixes,
     )
     service = WatcherService(config, client, state, uploader, resolver)
     return Application(
