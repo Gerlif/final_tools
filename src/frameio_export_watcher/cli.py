@@ -13,7 +13,7 @@ from .config import ConfigError, load_config
 from .frameio import FrameioError
 from .logging_setup import setup_logging
 from .resolver import NoMatch, ResolveError
-from .state import STATUS_NO_MATCH
+from .state import STATUS_BASELINE, STATUS_NO_MATCH
 
 log = logging.getLogger("frameio_export_watcher")
 
@@ -56,6 +56,21 @@ def cmd_once(args: argparse.Namespace) -> int:
     for error in stats.errors:
         print(f"  error: {error}", file=sys.stderr)
     return 1 if stats.failed else 0
+
+
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """Mark everything that exists now as handled, so only new files upload."""
+    app = _load(args)
+    dry_run = app.config.dry_run
+    try:
+        marked = app.service.baseline(dry_run=dry_run)
+    finally:
+        app.close()
+    verb = "would mark" if dry_run else "marked"
+    print(f"{verb} {marked} existing file(s) as already handled")
+    if not dry_run and marked:
+        print(f"release them again with: retry --status {STATUS_BASELINE}")
+    return 0
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -169,6 +184,11 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_run
     )
     sub.add_parser("once", help="run a single scan and exit").set_defaults(func=cmd_once)
+
+    sub.add_parser(
+        "baseline",
+        help="mark existing files as handled so only new ones are uploaded",
+    ).set_defaults(func=cmd_baseline)
 
     doctor = sub.add_parser("doctor", help="verify credentials and folder mapping")
     doctor.add_argument("--limit", type=int, default=20, help="export folders to show")
