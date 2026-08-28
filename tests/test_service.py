@@ -13,7 +13,12 @@ from frameio_export_watcher.config import (
 from frameio_export_watcher.paths import parse_template
 from frameio_export_watcher.resolver import DestinationResolver
 from frameio_export_watcher.service import WatcherService
-from frameio_export_watcher.state import STATUS_NO_MATCH, STATUS_UPLOADED, StateStore
+from frameio_export_watcher.state import (
+    STATUS_BASELINE,
+    STATUS_NO_MATCH,
+    STATUS_UPLOADED,
+    StateStore,
+)
 from frameio_export_watcher.uploader import Uploader
 
 from fakes import FakeFrameio, FakeSession
@@ -184,3 +189,69 @@ def test_heartbeat_is_written(tmp_path):
     api, session, state, service, config = build(tmp_path)
     service._heartbeat()
     assert config.heartbeat_file.exists()
+
+
+def test_baseline_marks_existing_files_so_the_backlog_is_never_uploaded(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    for name in ("gammel_1.mp4", "gammel_2.mp4", "gammel_3.mp4"):
+        (export / name).write_bytes(b"a" * 10)
+
+    assert service.baseline() == 3
+
+    stats = service.run_cycle(wait=True)
+    assert (stats.queued, stats.uploaded) == (0, 0)
+    assert not session.puts
+    assert state.counts() == {STATUS_BASELINE: 3}
+
+
+def test_files_arriving_after_a_baseline_are_uploaded(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    (export / "gammel.mp4").write_bytes(b"a" * 10)
+    service.baseline()
+
+    (export / "ny.mp4").write_bytes(b"b" * 10)
+    stats = service.run_cycle(wait=True)
+
+    assert stats.uploaded == 1
+    assert state.get(str(export / "ny.mp4")).status == STATUS_UPLOADED
+    assert state.get(str(export / "gammel.mp4")).status == STATUS_BASELINE
+
+
+def test_baseline_leaves_an_earlier_upload_alone(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    path = export / "spot.mp4"
+    path.write_bytes(b"a" * 10)
+    service.run_cycle(wait=True)
+
+    assert service.baseline() == 0
+    assert state.get(str(path)).status == STATUS_UPLOADED
+
+
+def test_baseline_dry_run_records_nothing(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    (export / "gammel.mp4").write_bytes(b"a" * 10)
+
+    assert service.baseline(dry_run=True) == 1
+    assert state.counts() == {}
+
+
+def test_a_baselined_file_can_be_released_again(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    path = export / "gammel.mp4"
+    path.write_bytes(b"a" * 10)
+    service.baseline()
+
+    # This is what `retry --status baseline` does.
+    state.forget(str(path))
+
+    assert service.run_cycle(wait=True).uploaded == 1
