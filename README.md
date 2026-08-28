@@ -89,6 +89,21 @@ Det er kun **venstre** side af kolonet, der er stien på NAS'en — højre side
 (`/data/AktiveProjekter`) er stien inde i containeren, og den er den, som
 `watch.root` i `config.yaml` peger på. Lad den stå.
 
+Viser `ls -ldn` noget i stil med `d---------+`, har sharet **ingen**
+POSIX-rettigheder, og adgangen styres alene af DSM's ACL'er (det er `+`'et).
+Så bliver ethvert almindeligt UID afvist. To muligheder:
+
+* **Hurtigt:** fjern kommentaren fra `#user: "0:0"` i `docker-compose.yml`, så
+  containeren kører som root. Kræver ingen ombygning, og sharet er stadig
+  monteret read-only.
+* **Pænere:** giv en DSM-bruger læseadgang til sharet i **Kontrolpanel → Delt
+  mappe → Rediger → Tilladelser**, find brugerens UID med `id brugernavn`, og
+  sæt det som `PUID`. Test at det virker, før du bygger om:
+
+  ```bash
+  sudo -u '#1026' ls /volume1/AktiveProjekter    # udskift 1026 med dit UID
+  ```
+
 ### 4. Læg credentials og config på plads
 
 ```bash
