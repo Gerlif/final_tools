@@ -53,37 +53,78 @@ Har I stadig et gammelt developer token (kun muligt hvis kontoen ikke
 administreres via Adobe Admin Console), kan I sætte `auth.mode: legacy` og
 `FRAMEIO_LEGACY_TOKEN`. Det legacy-API lukker efter **1. december 2026**.
 
-### 2. Konfigurér
+### 2. Hent koden ned på NAS'en
+
+Slå SSH til under **Kontrolpanel → Terminal & SNMP → Aktivér SSH-tjeneste**, og
+installer **Container Manager** (DSM 7.2+) eller **Docker** (ældre DSM) fra
+Pakkecenter. Log så ind og hent koden:
 
 ```bash
-cp config.example.yaml config.yaml
-# tilret watch.export_template, frameio.project_template og frameio.folder_template
+ssh dinbruger@nas.lokal
+sudo -i
+mkdir -p /volume1/docker/frameio-export-watcher
+cd /volume1/docker/frameio-export-watcher
+
+# Har NAS'en git:
+git clone -b claude/synology-frameio-uploader-yu9pw3 \\
+    https://github.com/Gerlif/final_tools.git .
 ```
 
-### 3. Byg og kør på NAS'en
+Har den ikke git, så hent i stedet ZIP'en fra GitHub på din egen maskine og læg
+indholdet i `/volume1/docker/frameio-export-watcher` med File Station.
+
+### 3. Find det rigtige UID/GID
+
+Containeren skal køre som en bruger, der kan læse produktionsmappen:
 
 ```bash
-export FRAMEIO_CLIENT_ID=...
-export FRAMEIO_CLIENT_SECRET=...
-docker compose up -d --build
+ls -ln /volume1/FinalKlip/AktiveProjekter | head
+# eller, hvis du kender brugeren der ejer filerne:
+id dinbruger
+```
+
+Skriv de to tal ind som `PUID` og `PGID` i `docker-compose.yml`, og tjek samtidig
+at stien i `volumes:` passer til jeres share (`/volume1/FinalKlip/AktiveProjekter`).
+
+### 4. Læg credentials og config på plads
+
+```bash
+cp .env.example .env
+vi .env               # indsæt FRAMEIO_CLIENT_ID og FRAMEIO_CLIENT_SECRET
+chmod 600 .env
+
+cp config.example.yaml config.yaml
+vi config.yaml        # tilret export_template, project_template, folder_template
+```
+
+`config.yaml` **skal** eksistere som fil, før containeren startes — ellers opretter
+Docker en tom *mappe* med det navn, og containeren fejler med en forvirrende
+fejlbesked.
+
+### 5. Byg og start
+
+```bash
+docker compose up -d --build      # DSM 7.2+ (Container Manager)
+# docker-compose up -d --build    # ældre DSM med Docker-pakken
+
 docker compose logs -f
 ```
 
-`PUID`/`PGID` i `docker-compose.yml` skal matche ejeren af sharet, ellers kan
-containeren ikke læse filerne.
+Containeren starter automatisk igen efter en genstart af NAS'en
+(`restart: unless-stopped`), og læser credentials fra `.env` hver gang.
 
-### 4. Tjek at mappingen rammer rigtigt
+### 6. Tjek at mappingen rammer rigtigt
 
 ```bash
 # Credentials, konto og alle fundne eksportmapper med deres Frame.io-match
 docker compose exec frameio-export-watcher python -m frameio_export_watcher doctor
 
 # Én konkret mappe
-docker compose exec frameio-export-watcher python -m frameio_export_watcher \
+docker compose exec frameio-export-watcher python -m frameio_export_watcher \\
     resolve "/data/AktiveProjekter/2026/Beierholm/Kundecase #0711/Projektfiler/Eksport"
 
 # Kør uden at uploade noget
-docker compose exec -e DRY_RUN=true frameio-export-watcher \
+docker compose exec -e DRY_RUN=true frameio-export-watcher \\
     python -m frameio_export_watcher once
 ```
 
@@ -102,7 +143,7 @@ Kom en Frame.io-mappe først til efter en fil blev sprunget over, kan den hentes
 med:
 
 ```bash
-docker compose exec frameio-export-watcher python -m frameio_export_watcher \
+docker compose exec frameio-export-watcher python -m frameio_export_watcher \\
     retry --status no_match
 ```
 

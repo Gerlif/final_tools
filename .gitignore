@@ -6,4 +6,5 @@ build/
 dist/
 *.egg-info/
 config.yaml
+.env
 state/
