@@ -44,6 +44,10 @@ Eksport/Hero/Fil.mp4   →   2026/Beierholm/Kundecase #0711/Hero/Fil.mp4
    samme mappe på Frame.io under sagsmappen, og filen lægges deri.
 6. **Versioner** — findes filnavnet allerede i målmappen, lægges den nye fil
    oven på som ny version (version stack) i stedet for at ligge ved siden af.
+   Et versionsmærke tæller som samme fil, uanset hvor i navnet det står, så
+   `CBS SCM_6 sek_V03_1x1.mov` lander oven på `CBS SCM_6 sek_V02_1x1.mov`.
+   Resten af navnet bevares — `16x9` og `9x16` er to leverancer og bliver
+   aldrig versioner af hinanden.
 7. **Hukommelse** — hver fil skrives i en SQLite-database (sti, størrelse,
    mtime, status). En genstart uploader derfor aldrig noget igen. Ændres filen,
    betragtes den som en ny version og uploades igen.
@@ -251,6 +255,7 @@ Alt er dokumenteret i [`config.example.yaml`](config.example.yaml). De vigtigste
 | `frameio.project_template` | Frame.io-projektets navn, fx `{year}` |
 | `frameio.folder_template` | Mappestien inde i projektet, fx `{client}/{case}` |
 | `frameio.version_stack_on_duplicate` | Stak samme filnavn som ny version |
+| `frameio.stack_version_suffixes` | Lad `v2` tælle som ny version af `v1` i samme navn |
 | `upload.max_concurrent_files` | Hvor mange filer der uploades samtidig |
 
 Hemmeligheder kommer kun fra miljøvariable — aldrig fra YAML-filen:
