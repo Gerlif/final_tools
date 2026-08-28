@@ -25,7 +25,7 @@ import requests
 
 from .config import UploadConfig
 from .frameio import Asset, FrameioAPIError, FrameioClient, FrameioError, USER_AGENT
-from .paths import fold
+from .paths import fold, split_version
 from .resolver import Destination
 
 log = logging.getLogger(__name__)
@@ -77,12 +77,14 @@ class Uploader:
         session: requests.Session | None = None,
         case_sensitive_names: bool = False,
         version_stack_on_duplicate: bool = True,
+        stack_version_suffixes: bool = True,
     ) -> None:
         self._client = client
         self._config = config
         self._session = session or requests.Session()
         self._case_sensitive = case_sensitive_names
         self._version_stack = version_stack_on_duplicate
+        self._stack_version_suffixes = stack_version_suffixes
 
     def upload(self, path: Path, name: str, destination: Destination) -> UploadResult:
         started = time.monotonic()
@@ -124,11 +126,20 @@ class Uploader:
     # -- steps ------------------------------------------------------------
 
     def _find_existing(self, destination: Destination, name: str) -> Asset | None:
-        wanted = fold(name, self._case_sensitive)
-        stem = fold(Path(name).stem, self._case_sensitive)
+        """The asset this upload should become a new version of, if any."""
         children = self._client.list_folder_children(
             destination.account_id, destination.folder_id
         )
+        exact = self._same_name(children, name)
+        if exact is not None:
+            return exact
+        if not self._stack_version_suffixes:
+            return None
+        return self._version_sibling(children, name)
+
+    def _same_name(self, children: list[Asset], name: str) -> Asset | None:
+        wanted = fold(name, self._case_sensitive)
+        stem = fold(Path(name).stem, self._case_sensitive)
         for child in children:
             if child.type == "version_stack":
                 # Frame.io names a stack after its versions; match on the stem so
@@ -138,6 +149,37 @@ class Uploader:
             elif child.type == "file" and fold(child.name, self._case_sensitive) == wanted:
                 return child
         return None
+
+    def _version_sibling(self, children: list[Asset], name: str) -> Asset | None:
+        """Find the same asset already present under a different version.
+
+        "CBS - Girltalk v3 16x9.mp4" belongs on top of an earlier
+        "CBS - Girltalk v2 16x9.mp4" -- but never on "CBS - Girltalk v2 9x16.mp4",
+        which is a different deliverable. Only an export carrying a version
+        marker of its own looks for siblings: an unversioned file has nothing
+        to tell it apart from an unrelated one sharing a prefix.
+        """
+        wanted = split_version(name)
+        if wanted.version is None:
+            return None
+
+        best: Asset | None = None
+        best_rank: tuple[bool, tuple[int, ...]] | None = None
+        for child in children:
+            if child.type not in {"file", "version_stack"}:
+                continue
+            candidate = split_version(child.name)
+            if not candidate.same_asset_as(wanted, self._case_sensitive):
+                continue
+            # Prefer an existing stack, then the highest version seen, so a new
+            # v3 lands on v2 rather than on a stray v1.
+            rank = (child.type == "version_stack", candidate.version or ())
+            if best_rank is None or rank > best_rank:
+                best, best_rank = child, rank
+
+        if best is not None:
+            log.info("%s continues the versions of %s", name, best.name)
+        return best
 
     def _put_chunks(
         self,
