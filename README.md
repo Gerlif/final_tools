@@ -119,7 +119,7 @@ vi config.yaml        # tilret export_template, project_template, folder_templat
 Docker en tom *mappe* med det navn, og containeren fejler med en forvirrende
 fejlbesked.
 
-### 5. Byg og start
+### 5. Byg imaget og sæt udgangspunktet
 
 Find først ud af hvilken Compose I har:
 
@@ -134,7 +134,32 @@ med `unknown shorthand flag: 'd'`, har I den ældre pakke, og **så skal alle
 `docker-compose`.
 
 ```bash
-docker compose up -d --build
+docker compose build
+```
+
+Ligger der allerede færdige eksporter i mapperne, skal de markeres som
+historik, **før** overvågningen startes. Ellers bliver hele bagkataloget
+uploadet ved anden scanning:
+
+```bash
+docker compose run --rm frameio-export-watcher baseline
+```
+
+Den svarer fx `marked 201 existing file(s) as already handled`. Fra nu af er det
+kun filer, der bliver skrevet eller ændret herefter, der uploades. Vil I se hvad
+den ville markere uden at gøre det:
+
+```bash
+docker compose run --rm -e DRY_RUN=true frameio-export-watcher baseline
+```
+
+Skifter I mening, kan bagkataloget frigives igen med
+`retry --status baseline`.
+
+### 6. Start
+
+```bash
+docker compose up -d
 docker compose logs -f
 ```
 
@@ -146,7 +171,8 @@ Containeren starter automatisk igen efter en genstart af NAS'en
 Vil I hellere bruge DSM's GUI: **Container Manager → Projekt → Opret → Angiv sti**
 og peg på `/volume1/docker/frameio-export-watcher`. Den finder selv
 `docker-compose.yml`, bygger imaget og starter containeren, og derefter har I
-logs, status og genstart-knap i DSM.
+logs, status og genstart-knap i DSM. Kør `baseline` fra trin 5 først — Container
+Manager starter overvågningen med det samme.
 
 Filerne skal stadig ligge på plads først (trin 2-4). De kan redigeres i File
 Station med **Teksteditor**-pakken, hvis I ikke vil bruge SSH — men File Station
@@ -158,7 +184,7 @@ Vælg **én** af de to til at eje containeren. Starter I den både med
 `docker compose` og som Container Manager-projekt, ender I med to sæt
 containere, der slås om den samme mappe.
 
-### 6. Tjek at mappingen rammer rigtigt
+### 7. Tjek at mappingen rammer rigtigt
 
 ```bash
 # Credentials, konto og alle fundne eksportmapper med deres Frame.io-match
@@ -179,6 +205,7 @@ docker compose exec -e DRY_RUN=true frameio-export-watcher \
 |-----------|--------------|
 | `run`     | Overvåger løbende (containerens standard) |
 | `once`    | Én scanning, venter på uploads, afslutter |
+| `baseline`| Markerer alt eksisterende som færdigbehandlet, uden at uploade |
 | `doctor`  | Tjekker login, konto og hvad hver eksportmappe matcher på Frame.io |
 | `resolve` | Viser Frame.io-målet for én sti |
 | `status`  | Viser hvad der er uploadet, sprunget over eller fejlet |
