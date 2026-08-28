@@ -4,7 +4,12 @@
       -> project "2026"  ->  folder "Beierholm"  ->  folder "Kundecase #0711"
 
 If any step has no counterpart on Frame.io the mapping fails and nothing is
-uploaded -- folders are created by the production bot, never by this tool.
+uploaded: the project, client and case folders are created by the production
+bot, never by this tool.
+
+Folders *below* the export folder are the exception. Those mirror whatever an
+editor put under Eksport/, so they are created on demand -- see
+``resolve_subfolder``.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .config import FrameioConfig
 from .frameio import FrameioClient, FrameioError, Project
@@ -59,6 +64,7 @@ class DestinationResolver:
         self._projects: dict[str, Project] = {}
         self._projects_expire = 0.0
         self._cache: dict[tuple[str, ...], tuple[Destination | NoMatch, float]] = {}
+        self._subfolders: dict[tuple[str, str], tuple[str, float]] = {}
 
     # -- account / workspace ---------------------------------------------
 
@@ -204,6 +210,73 @@ class DestinationResolver:
             folder_path=tuple(walked),
         )
 
+    # -- subfolders below the matched case folder -------------------------
+
+    def resolve_subfolder(
+        self, destination: Destination, parts: tuple[str, ...]
+    ) -> Destination:
+        """Descend into the folders below an already-matched destination.
+
+        Unlike the project/client/case lookup, these folders are created when
+        they are missing: everything under the export folder is this tool's to
+        mirror, while the structure above it belongs to the production bot.
+
+        Creation happens under the resolver lock so two upload threads cannot
+        create the same folder twice.
+        """
+        if not parts:
+            return destination
+
+        with self._lock:
+            folder_id = destination.folder_id
+            walked = list(destination.folder_path)
+            for part in parts:
+                folder_id = self._descend(folder_id, part)
+                walked.append(part)
+            return replace(
+                destination, folder_id=folder_id, folder_path=tuple(walked)
+            )
+
+    def _descend(self, parent_id: str, name: str) -> str:
+        key = (parent_id, fold(name, self._config.case_sensitive_names))
+        cached = self._subfolders.get(key)
+        if cached and time.monotonic() < cached[1]:
+            return cached[0]
+
+        folder_id = self._find_or_create(parent_id, name)
+        self._subfolders[key] = (
+            folder_id,
+            time.monotonic() + self._config.lookup_cache_seconds,
+        )
+        return folder_id
+
+    def _find_or_create(self, parent_id: str, name: str) -> str:
+        existing = self._child_folder(parent_id, name)
+        if existing is not None:
+            return existing
+        try:
+            created = self._client.create_folder(self.account_id(), parent_id, name)
+        except FrameioError:
+            # Something else may have created it in the meantime; look again
+            # before giving up, so a race does not fail the upload.
+            existing = self._child_folder(parent_id, name)
+            if existing is not None:
+                return existing
+            raise
+        log.info("created Frame.io folder %r under %s", name, parent_id)
+        return created.id
+
+    def _child_folder(self, parent_id: str, name: str) -> str | None:
+        wanted = fold(name, self._config.case_sensitive_names)
+        for child in self._client.list_folder_children(
+            self.account_id(), parent_id, asset_type="folder"
+        ):
+            if child.type == "folder" and fold(
+                child.name, self._config.case_sensitive_names
+            ) == wanted:
+                return child.id
+        return None
+
     def invalidate_projects(self) -> None:
         with self._lock:
             self._projects = {}
@@ -212,4 +285,5 @@ class DestinationResolver:
     def invalidate(self) -> None:
         with self._lock:
             self._cache.clear()
+            self._subfolders.clear()
             self.invalidate_projects()
