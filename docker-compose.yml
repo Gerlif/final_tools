@@ -16,6 +16,11 @@ services:
     # cannot write to it. Comment this line out to use PUID/PGID instead, on a
     # share whose POSIX permissions do grant access.
     user: "0:0"
+    # Shares the NAS's process namespace so the stability check can see whether
+    # the file server still holds an export file open. Without it the check has
+    # nothing to look at; comment both this and use_open_handle_check out to run
+    # on size-and-mtime stability alone.
+    pid: host
     # Credentials come from .env next to this file. Compose passes every
     # variable in it straight into the container, so switching between IMS
     # credentials and a legacy token needs no change here. A missing .env
@@ -32,8 +37,6 @@ services:
       - /volume1/AktiveProjekter:/data/AktiveProjekter:ro
       - ./config.yaml:/config/config.yaml:ro
       - frameio-state:/state
-    # Uncomment to let the stability check see Samba's open file handles.
-    # pid: host
 
 volumes:
   frameio-state:
