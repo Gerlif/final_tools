@@ -255,3 +255,100 @@ def test_a_baselined_file_can_be_released_again(tmp_path):
     state.forget(str(path))
 
     assert service.run_cycle(wait=True).uploaded == 1
+
+
+def test_a_subfolder_is_recreated_on_frameio_and_the_file_lands_in_it(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    case_folder = mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    (export / "Hero").mkdir()
+    (export / "Hero" / "Fil.mp4").write_bytes(b"a" * 10)
+
+    object.__setattr__(config.watch, "recursive", True)
+    stats = service.run_cycle(wait=True)
+
+    assert stats.uploaded == 1
+    created = [c for c in api.calls if c[0] == "create_folder"]
+    assert created == [("create_folder", case_folder.id, "Hero")]
+
+    hero = next(c for c in api.children[case_folder.id] if c.name == "Hero")
+    uploads = [c for c in api.calls if c[0] == "create_local_upload"]
+    assert uploads == [("create_local_upload", hero.id, "Fil.mp4", 10)]
+
+
+def test_an_existing_subfolder_is_reused_not_duplicated(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    case_folder = mirror_on_frameio(api)
+    api.add_folder(case_folder.id, "Hero")
+    export = make_export(config.watch.root)
+    (export / "Hero").mkdir()
+    (export / "Hero" / "Fil.mp4").write_bytes(b"a" * 10)
+
+    object.__setattr__(config.watch, "recursive", True)
+    service.run_cycle(wait=True)
+
+    assert not [c for c in api.calls if c[0] == "create_folder"]
+    assert len([f for f in api.children[case_folder.id] if f.name == "Hero"]) == 1
+
+
+def test_nested_subfolders_are_mirrored_in_order(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    case_folder = mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    deep = export / "Hero" / "16x9"
+    deep.mkdir(parents=True)
+    (deep / "Fil.mp4").write_bytes(b"a" * 10)
+
+    object.__setattr__(config.watch, "recursive", True)
+    service.run_cycle(wait=True)
+
+    created = [c for c in api.calls if c[0] == "create_folder"]
+    assert [c[2] for c in created] == ["Hero", "16x9"]
+    assert created[0][1] == case_folder.id
+    hero = next(c for c in api.children[case_folder.id] if c.name == "Hero")
+    assert created[1][1] == hero.id
+
+
+def test_subfolders_are_flattened_when_creation_is_switched_off(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    case_folder = mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    (export / "Hero").mkdir()
+    (export / "Hero" / "Fil.mp4").write_bytes(b"a" * 10)
+
+    object.__setattr__(config.watch, "recursive", True)
+    object.__setattr__(config.frameio, "create_subfolders", False)
+    service.run_cycle(wait=True)
+
+    assert not [c for c in api.calls if c[0] == "create_folder"]
+    uploads = [c for c in api.calls if c[0] == "create_local_upload"]
+    assert uploads == [("create_local_upload", case_folder.id, "Fil.mp4", 10)]
+
+
+def test_a_missing_case_folder_is_still_never_created(tmp_path):
+    api, session, state, service, config = build(tmp_path)
+    api.add_project("2026")  # client and case folders absent on Frame.io
+    export = make_export(config.watch.root)
+    (export / "Hero").mkdir()
+    (export / "Hero" / "Fil.mp4").write_bytes(b"a" * 10)
+
+    object.__setattr__(config.watch, "recursive", True)
+    stats = service.run_cycle(wait=True)
+
+    assert (stats.uploaded, stats.skipped_no_match) == (0, 1)
+    assert not [c for c in api.calls if c[0] == "create_folder"]
+
+
+def test_dry_run_reports_the_subfolder_without_creating_it(tmp_path):
+    config = make_config(tmp_path, dry_run=True)
+    api, session, state, service, _ = build(tmp_path, config=config)
+    mirror_on_frameio(api)
+    export = make_export(config.watch.root)
+    (export / "Hero").mkdir()
+    (export / "Hero" / "Fil.mp4").write_bytes(b"a" * 10)
+
+    object.__setattr__(config.watch, "recursive", True)
+    service.run_cycle(wait=True)
+
+    assert not [c for c in api.calls if c[0] == "create_folder"]
+    assert not session.puts
