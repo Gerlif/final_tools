@@ -113,6 +113,23 @@ docker compose logs -f
 Containeren starter automatisk igen efter en genstart af NAS'en
 (`restart: unless-stopped`), og læser credentials fra `.env` hver gang.
 
+#### Container Manager i stedet for SSH
+
+Vil I hellere bruge DSM's GUI: **Container Manager → Projekt → Opret → Angiv sti**
+og peg på `/volume1/docker/frameio-export-watcher`. Den finder selv
+`docker-compose.yml`, bygger imaget og starter containeren, og derefter har I
+logs, status og genstart-knap i DSM.
+
+Filerne skal stadig ligge på plads først (trin 2-4). De kan redigeres i File
+Station med **Teksteditor**-pakken, hvis I ikke vil bruge SSH — men File Station
+viser som udgangspunkt ikke filer, der starter med punktum. Vil I redigere
+credentials i GUI'en, så kald filen `frameio.env` i stedet og ret linjen i
+`docker-compose.yml` til `- frameio.env` (begge navne er gitignorerede).
+
+Vælg **én** af de to til at eje containeren. Starter I den både med
+`docker compose` og som Container Manager-projekt, ender I med to sæt
+containere, der slås om den samme mappe.
+
 ### 6. Tjek at mappingen rammer rigtigt
 
 ```bash
