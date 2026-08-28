@@ -1,0 +1,105 @@
+# Example configuration for frameio-export-watcher.
+# Copy to config.yaml and mount it at /config/config.yaml in the container.
+# Secrets are NOT read from this file - see the environment variables below.
+
+watch:
+  # Where the productions live, as seen from inside the container.
+  root: /data/AktiveProjekter
+
+  # The path from `root` down to an export folder. Placeholders in {braces}
+  # become fields you can reuse in the Frame.io templates below.
+  #
+  #   /data/AktiveProjekter/2026/Beierholm/Kundecase #0711/Projektfiler/Eksport
+  #                         ^year ^client   ^case
+  export_template: "{year}/{client}/{case}/Projektfiler/Eksport"
+
+  # Seconds between scans.
+  poll_interval_seconds: 60
+
+  # false: only files directly in the export folder are uploaded.
+  # true : files in subfolders too, uploaded flat into the same Frame.io folder.
+  recursive: false
+
+  # Files smaller than this are ignored (bytes).
+  min_file_size_bytes: 1
+
+  ignore_patterns:
+    - ".*"
+    - "~$*"
+    - "*.tmp"
+    - "*.temp"
+    - "*.part"
+    - "*.partial"
+    - "*.crdownload"
+    - "*.download"
+    - "*.filepart"
+    - "Thumbs.db"
+    - "desktop.ini"
+
+  # A file is considered finished when its size and modification time have been
+  # unchanged across `checks` observations spanning at least `interval_seconds`,
+  # and it is at least `min_age_seconds` old.
+  stability:
+    min_age_seconds: 60
+    checks: 2
+    interval_seconds: 15
+    # Also require that no process holds the file open. Only works when the
+    # container runs with `pid: host`, since the Samba process lives on the NAS.
+    use_open_handle_check: false
+
+frameio:
+  # Leave empty to auto-detect when the credentials only see one account.
+  account_id: ""
+
+  # Optional: only look at projects in this workspace.
+  workspace_name: ""
+
+  # The Frame.io project name, rendered from the fields above.
+  project_template: "{year}"
+
+  # The folder path inside that project. Leave empty to upload to the project root.
+  folder_template: "{client}/{case}"
+
+  # Folder and project names are matched case-insensitively by default.
+  case_sensitive_names: false
+
+  # Upload a file whose name already exists as a new version of it.
+  version_stack_on_duplicate: true
+
+  # How long project/folder lookups are cached (seconds).
+  lookup_cache_seconds: 300
+  # How long a "no matching Frame.io folder" answer is cached (seconds).
+  missing_folder_cache_seconds: 900
+
+upload:
+  max_concurrent_files: 2
+  max_attempts: 5
+  retry_backoff_seconds: 60
+  retry_backoff_max_seconds: 3600
+  chunk_attempts: 4
+  request_timeout_seconds: 60
+  upload_timeout_seconds: 3600
+  status_poll_seconds: 5
+  status_timeout_seconds: 900
+  # Minimum seconds between API calls; the tightest Frame.io limit is 5/second.
+  min_api_interval_seconds: 0.25
+
+auth:
+  # "ims"    - Adobe IMS server-to-server (recommended)
+  # "legacy" - legacy Frame.io developer token
+  mode: ims
+  scope: "openid,AdobeID,frame.s2s.all"
+
+runtime:
+  state_db: /state/state.db
+  heartbeat_file: /state/heartbeat
+  log_level: INFO
+  log_format: text
+  dry_run: false
+
+# Environment variables (secrets and overrides):
+#   FRAMEIO_CLIENT_ID       / FRAMEIO_CLIENT_ID_FILE
+#   FRAMEIO_CLIENT_SECRET   / FRAMEIO_CLIENT_SECRET_FILE
+#   FRAMEIO_LEGACY_TOKEN    / FRAMEIO_LEGACY_TOKEN_FILE
+#   FRAMEIO_ACCOUNT_ID, FRAMEIO_AUTH_MODE, FRAMEIO_API_BASE_URL
+#   WATCH_ROOT, STATE_DB, CONFIG_PATH, LOG_LEVEL, LOG_FORMAT, DRY_RUN
