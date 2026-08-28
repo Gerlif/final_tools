@@ -96,13 +96,42 @@ class FakeFrameio:
 
     def create_version_stack(self, account_id, folder_id, file_ids) -> Asset:
         self.calls.append(("version_stack", folder_id, tuple(file_ids)))
-        stack = Asset(id=_new_id("stack"), name="stack", type="version_stack", parent_id=folder_id)
+        # Frame.io names a stack after its head version.
+        head = next(
+            (
+                child.name
+                for child in self.children.get(folder_id, [])
+                if child.id == file_ids[-1]
+            ),
+            "stack",
+        )
+        self.children[folder_id] = [
+            child
+            for child in self.children.get(folder_id, [])
+            if child.id not in set(file_ids)
+        ]
+        stack = Asset(id=_new_id("stack"), name=head, type="version_stack", parent_id=folder_id)
         self.children.setdefault(folder_id, []).append(stack)
         return stack
 
     def move_file(self, account_id, file_id, parent_id) -> Asset:
         self.calls.append(("move", file_id, parent_id))
-        return Asset(id=file_id, name="moved", type="file", parent_id=parent_id)
+        moved = None
+        for folder_id, items in self.children.items():
+            for item in items:
+                if item.id == file_id:
+                    moved = item
+                    break
+            if moved is not None:
+                # A moved file leaves its old folder listing, as on Frame.io.
+                self.children[folder_id] = [i for i in items if i.id != file_id]
+                break
+        moved = moved or Asset(id=file_id, name="moved", type="file")
+        relocated = Asset(
+            id=moved.id, name=moved.name, type="file", parent_id=parent_id
+        )
+        self.children.setdefault(parent_id, []).append(relocated)
+        return relocated
 
     def delete_file(self, account_id, file_id) -> None:
         self.calls.append(("delete", file_id))
