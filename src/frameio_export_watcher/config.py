@@ -68,6 +68,7 @@ class FrameioConfig:
     workspace_name: str | None = None
     case_sensitive_names: bool = False
     version_stack_on_duplicate: bool = True
+    create_subfolders: bool = True
     lookup_cache_seconds: float = 300.0
     missing_folder_cache_seconds: float = 900.0
     api_base_url: str = DEFAULT_API_BASE_URL
@@ -198,6 +199,7 @@ def load_config(path: Path | None = None) -> AppConfig:
         version_stack_on_duplicate=_as_bool(
             frameio_raw.get("version_stack_on_duplicate"), True
         ),
+        create_subfolders=_as_bool(frameio_raw.get("create_subfolders"), True),
         lookup_cache_seconds=float(frameio_raw.get("lookup_cache_seconds", 300)),
         missing_folder_cache_seconds=float(
             frameio_raw.get("missing_folder_cache_seconds", 900)
