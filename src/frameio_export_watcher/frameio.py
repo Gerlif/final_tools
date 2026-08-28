@@ -6,6 +6,7 @@ Endpoints used (see https://next.developer.frame.io/platform):
     GET   /v4/accounts/{account_id}/workspaces
     GET   /v4/accounts/{account_id}/projects
     GET   /v4/accounts/{account_id}/folders/{folder_id}/children
+    POST  /v4/accounts/{account_id}/folders/{folder_id}/folders
     POST  /v4/accounts/{account_id}/folders/{folder_id}/files/local_upload
     GET   /v4/accounts/{account_id}/files/{file_id}/status
     POST  /v4/accounts/{account_id}/folders/{folder_id}/version_stacks
@@ -272,6 +273,14 @@ class FrameioClient:
                 f"/accounts/{account_id}/folders/{folder_id}/children", params
             )
         ]
+
+    def create_folder(self, account_id: str, parent_id: str, name: str) -> Asset:
+        payload = self._request(
+            "POST",
+            f"/accounts/{account_id}/folders/{parent_id}/folders",
+            json_body={"data": {"name": name}},
+        )
+        return Asset.from_api(payload.get("data") or {})
 
     def create_local_upload(
         self, account_id: str, folder_id: str, name: str, file_size: int
