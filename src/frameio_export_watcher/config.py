@@ -63,6 +63,7 @@ class StabilityConfig:
     checks: int = 2
     interval_seconds: float = 15.0
     use_open_handle_check: bool = False
+    upload_as_soon_as_closed: bool = False
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,9 @@ def load_config(path: Path | None = None) -> AppConfig:
         checks=max(1, int(stability_raw.get("checks", 2))),
         interval_seconds=float(stability_raw.get("interval_seconds", 15)),
         use_open_handle_check=_as_bool(stability_raw.get("use_open_handle_check"), False),
+        upload_as_soon_as_closed=_as_bool(
+            stability_raw.get("upload_as_soon_as_closed"), False
+        ),
     )
 
     ignore = watch_raw.get("ignore_patterns")
