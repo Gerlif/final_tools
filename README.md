@@ -5,8 +5,8 @@ til den tilsvarende mappe på Frame.io. Kører som en Docker-container på en
 Synology NAS.
 
 ```
-/volume1/FinalKlip/AktiveProjekter/2026/Beierholm/Kundecase #0711/Projektfiler/Eksport
-                                   └── år ──┘ └─ kunde ─┘ └──── sag ─────┘
+/volume1/AktiveProjekter/2026/Beierholm/Kundecase #0711/Projektfiler/Eksport
+                         └år┘ └─kunde─┘ └─────sag─────┘
 
 Frame.io:  projekt "2026"  →  mappe "Beierholm"  →  mappe "Kundecase #0711"
 ```
@@ -78,13 +78,16 @@ indholdet i `/volume1/docker/frameio-export-watcher` med File Station.
 Containeren skal køre som en bruger, der kan læse produktionsmappen:
 
 ```bash
-ls -ln /volume1/FinalKlip/AktiveProjekter | head
+ls -ln /volume1/AktiveProjekter | head
 # eller, hvis du kender brugeren der ejer filerne:
 id dinbruger
 ```
 
 Skriv de to tal ind som `PUID` og `PGID` i `docker-compose.yml`, og tjek samtidig
-at stien i `volumes:` passer til jeres share (`/volume1/FinalKlip/AktiveProjekter`).
+at stien i `volumes:` passer til jeres share (`/volume1/AktiveProjekter`).
+Det er kun **venstre** side af kolonet, der er stien på NAS'en — højre side
+(`/data/AktiveProjekter`) er stien inde i containeren, og den er den, som
+`watch.root` i `config.yaml` peger på. Lad den stå.
 
 ### 4. Læg credentials og config på plads
 
