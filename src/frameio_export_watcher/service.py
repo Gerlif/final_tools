@@ -245,16 +245,27 @@ class WatcherService:
                 )
                 return
 
+            subpath = (
+                candidate.subpath if self._config.frameio.create_subfolders else ()
+            )
+
             if self._config.dry_run:
                 log.info(
                     "[dry-run] would upload %s (%s bytes) to %s",
                     path,
                     f"{candidate.size:,}",
-                    outcome.display,
+                    "/".join((outcome.display, *subpath)),
                 )
                 return
 
-            self._upload(candidate, outcome, stats)
+            # Folders below the export folder are created on demand; the
+            # project/client/case folders above it never are.
+            destination = (
+                self._resolver.resolve_subfolder(outcome, subpath)
+                if subpath
+                else outcome
+            )
+            self._upload(candidate, destination, stats)
         except Exception as exc:  # noqa: BLE001 - a worker must never die silently
             stats.count("failed", error=f"{path}: {exc}")
             attempts = self._state.bump_failure(
