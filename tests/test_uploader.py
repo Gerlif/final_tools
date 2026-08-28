@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from frameio_export_watcher.config import UploadConfig
@@ -117,3 +119,144 @@ def test_a_failed_upload_status_is_an_error(tmp_path):
     api.create_local_upload = failing
     with pytest.raises(UploadError):
         make_uploader(api, session).upload(path, "spot.mp4", destination)
+
+
+def upload_named(api, session, name, destination, **kwargs):
+    import tempfile
+
+    directory = tempfile.mkdtemp()
+    path = Path(directory) / name
+    path.write_bytes(b"x" * 4)
+    return make_uploader(api, session, **kwargs).upload(path, name, destination)
+
+
+def test_a_new_version_stacks_onto_the_previous_one(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    previous = api.add_file(destination.folder_id, "Beierholm - HERO v1.mp4")
+
+    result = upload_named(
+        api, session, "Beierholm - HERO v1.1.mp4", destination
+    )
+
+    stacked = [c for c in api.calls if c[0] == "version_stack"]
+    assert stacked and stacked[0][2] == (previous.id, result.file_id)
+
+
+def test_version_markers_of_any_shape_find_each_other(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "Beierholm - HERO v1.0.mp4")
+
+    upload_named(api, session, "Beierholm - HERO V11.mp4", destination)
+
+    assert [c for c in api.calls if c[0] == "version_stack"]
+
+
+def test_the_newest_version_is_the_one_stacked_onto(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "HERO v1.mp4")
+    newest = api.add_file(destination.folder_id, "HERO v2.mp4")
+
+    result = upload_named(api, session, "HERO v3.mp4", destination)
+
+    stacked = [c for c in api.calls if c[0] == "version_stack"]
+    assert stacked[0][2] == (newest.id, result.file_id)
+
+
+def test_a_later_version_joins_a_stack_built_from_earlier_ones(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    stack = api.add_file(
+        destination.folder_id, "HERO v2.mp4", asset_type="version_stack"
+    )
+    api.add_file(destination.folder_id, "HERO v1.mp4")
+
+    result = upload_named(api, session, "HERO v3.mp4", destination)
+
+    assert ("move", result.file_id, stack.id) in api.calls
+
+
+def test_a_different_name_is_left_alone(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "Beierholm - TEASER v1.mp4")
+
+    upload_named(api, session, "Beierholm - HERO v2.mp4", destination)
+
+    assert not [c for c in api.calls if c[0] in {"version_stack", "move"}]
+
+
+def test_a_different_file_type_is_not_a_version_of_the_same_asset(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "HERO v1.wav")
+
+    upload_named(api, session, "HERO v2.mp4", destination)
+
+    assert not [c for c in api.calls if c[0] in {"version_stack", "move"}]
+
+
+def test_an_unversioned_export_only_matches_an_exact_name(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "HERO v1.mp4")
+
+    upload_named(api, session, "HERO.mp4", destination)
+
+    assert not [c for c in api.calls if c[0] in {"version_stack", "move"}]
+
+
+def test_version_suffix_matching_can_be_switched_off(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "HERO v1.mp4")
+
+    upload_named(
+        api, session, "HERO v2.mp4", destination, stack_version_suffixes=False
+    )
+
+    assert not [c for c in api.calls if c[0] in {"version_stack", "move"}]
+
+
+def test_a_different_aspect_ratio_is_never_a_version_of_the_same_asset(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "CBS - Girltalk v3 16x9.mp4")
+
+    upload_named(api, session, "CBS - Girltalk v04_9x16.mp4", destination)
+
+    assert not [c for c in api.calls if c[0] in {"version_stack", "move"}]
+
+
+def test_a_version_in_the_middle_of_the_name_still_stacks(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    previous = api.add_file(destination.folder_id, "CBS SCM_6 sek_V02_1x1.mov")
+
+    result = upload_named(api, session, "CBS SCM_6 sek_V03_1x1.mov", destination)
+
+    stacked = [c for c in api.calls if c[0] == "version_stack"]
+    assert stacked and stacked[0][2] == (previous.id, result.file_id)
+
+
+def test_the_same_aspect_ratio_stacks_across_separator_styles(tmp_path):
+    api = FakeFrameio()
+    session = FakeSession()
+    destination = destination_for(api)
+    api.add_file(destination.folder_id, "CBS - Girltalk v3 16x9.mp4")
+
+    upload_named(api, session, "CBS_Girltalk_16x9_v5.mp4", destination)
+
+    assert [c for c in api.calls if c[0] == "version_stack"]
