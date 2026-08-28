@@ -16,10 +16,17 @@ from dataclasses import dataclass
 
 _FIELD_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
-# A trailing version marker: "spot v2", "spot_v1.1", "spot-V11". A separator is
-# required before the v, so a name that merely ends in one -- "Groov5" -- is
-# left alone.
-_VERSION_RE = re.compile(r"^(?P<base>.*?)[\s._-]+[vV](?P<version>\d+(?:\.\d+)*)$")
+# A version marker anywhere in the name: "spot v2", "CBS_V02_1x1", "spot-V11".
+# It must stand as its own token -- a separator or the start before it, a
+# separator or the end after -- so a name that merely contains the letters,
+# like "Groov5", is left alone.
+_VERSION_TOKEN_RE = re.compile(
+    r"(?:(?<=[\s._-])|^)[vV](?P<version>\d+(?:\.\d+)*)(?=[\s._-]|$)"
+)
+
+# Runs of separators collapse to one space before names are compared, so
+# "CBS - Girltalk 16x9" and "CBS_Girltalk_16x9" are the same asset.
+_SEPARATORS_RE = re.compile(r"[\s._-]+")
 
 # An extension starts with a letter, so the ".1" of "spot v1.1" is part of the
 # version rather than a file type.
@@ -158,38 +165,53 @@ def _split_keeping_fields(raw: str) -> list[str]:
 
 @dataclass(frozen=True)
 class VersionedName:
-    """A file name split into the part that identifies the asset and its version.
+    """A file name split into what identifies the asset and which version it is.
 
-    ``Beierholm - HERO v1.1.mp4`` -> base ``Beierholm - HERO``, version
-    ``(1, 1)``, extension ``.mp4``. Two exports are versions of the same thing
-    when their base and extension match, whatever version each carries.
+    The version marker is removed wherever it sits, and everything else is kept:
+
+        CBS SCM_6 sek_V02_1x1.mov  ->  "CBS SCM 6 sek 1x1",  version (2,)
+        CBS - Girltalk v3 16x9.mp4 ->  "CBS Girltalk 16x9",  version (3,)
+        CBS - Girltalk v04_9x16.mp4 -> "CBS Girltalk 9x16",  version (4,)
+
+    Keeping the rest matters: an aspect ratio is part of what the file *is*, so
+    a 16x9 and a 9x16 are two deliverables and never versions of each other.
     """
 
-    base: str
+    identity: str
     version: tuple[int, ...] | None
     extension: str
 
     def same_asset_as(self, other: "VersionedName", case_sensitive: bool) -> bool:
-        return fold(self.base, case_sensitive) == fold(
-            other.base, case_sensitive
+        return fold(self.identity, case_sensitive) == fold(
+            other.identity, case_sensitive
         ) and fold(self.extension, case_sensitive) == fold(
             other.extension, case_sensitive
         )
 
 
 def split_version(name: str) -> VersionedName:
-    """Pull a trailing version marker off a file name."""
+    """Separate a version marker from the rest of a file name."""
     cleaned = normalize(name)
 
     extension_match = _EXTENSION_RE.search(cleaned)
     extension = extension_match.group(0) if extension_match else ""
     stem = cleaned[: len(cleaned) - len(extension)] if extension else cleaned
 
-    versioned = _VERSION_RE.match(stem)
-    if versioned is None:
-        return VersionedName(base=stem.strip(), version=None, extension=extension)
+    # A name can hold more than one candidate; the last is the version.
+    matches = list(_VERSION_TOKEN_RE.finditer(stem))
+    if not matches:
+        return VersionedName(
+            identity=_collapse(stem), version=None, extension=extension
+        )
 
-    version = tuple(int(part) for part in versioned.group("version").split("."))
+    marker = matches[-1]
+    version = tuple(int(part) for part in marker.group("version").split("."))
+    remainder = f"{stem[: marker.start()]} {stem[marker.end() :]}"
     return VersionedName(
-        base=versioned.group("base").strip(), version=version, extension=extension
+        identity=_collapse(remainder), version=version, extension=extension
     )
+
+
+def _collapse(name: str) -> str:
+    """Reduce separator runs to single spaces so spelling variants compare equal."""
+    return _SEPARATORS_RE.sub(" ", name).strip()
