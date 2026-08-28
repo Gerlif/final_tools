@@ -16,6 +16,15 @@ from dataclasses import dataclass
 
 _FIELD_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
+# A trailing version marker: "spot v2", "spot_v1.1", "spot-V11". A separator is
+# required before the v, so a name that merely ends in one -- "Groov5" -- is
+# left alone.
+_VERSION_RE = re.compile(r"^(?P<base>.*?)[\s._-]+[vV](?P<version>\d+(?:\.\d+)*)$")
+
+# An extension starts with a letter, so the ".1" of "spot v1.1" is part of the
+# version rather than a file type.
+_EXTENSION_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
+
 
 class TemplateError(ValueError):
     """Raised when a template cannot be parsed."""
@@ -145,3 +154,42 @@ def _split_keeping_fields(raw: str) -> list[str]:
     if index < len(raw):
         parts.append(raw[index:])
     return parts
+
+
+@dataclass(frozen=True)
+class VersionedName:
+    """A file name split into the part that identifies the asset and its version.
+
+    ``Beierholm - HERO v1.1.mp4`` -> base ``Beierholm - HERO``, version
+    ``(1, 1)``, extension ``.mp4``. Two exports are versions of the same thing
+    when their base and extension match, whatever version each carries.
+    """
+
+    base: str
+    version: tuple[int, ...] | None
+    extension: str
+
+    def same_asset_as(self, other: "VersionedName", case_sensitive: bool) -> bool:
+        return fold(self.base, case_sensitive) == fold(
+            other.base, case_sensitive
+        ) and fold(self.extension, case_sensitive) == fold(
+            other.extension, case_sensitive
+        )
+
+
+def split_version(name: str) -> VersionedName:
+    """Pull a trailing version marker off a file name."""
+    cleaned = normalize(name)
+
+    extension_match = _EXTENSION_RE.search(cleaned)
+    extension = extension_match.group(0) if extension_match else ""
+    stem = cleaned[: len(cleaned) - len(extension)] if extension else cleaned
+
+    versioned = _VERSION_RE.match(stem)
+    if versioned is None:
+        return VersionedName(base=stem.strip(), version=None, extension=extension)
+
+    version = tuple(int(part) for part in versioned.group("version").split("."))
+    return VersionedName(
+        base=versioned.group("base").strip(), version=version, extension=extension
+    )
