@@ -65,44 +65,45 @@ sudo -i
 mkdir -p /volume1/docker/frameio-export-watcher
 cd /volume1/docker/frameio-export-watcher
 
-# Har NAS'en git:
-git clone -b claude/synology-frameio-uploader-yu9pw3 \
-    https://github.com/Gerlif/final_tools.git .
+curl -L https://github.com/Gerlif/final_tools/archive/refs/heads/claude/synology-frameio-uploader-yu9pw3.tar.gz \
+    | tar xz --strip-components=1
 ```
 
-Har den ikke git, så hent i stedet ZIP'en fra GitHub på din egen maskine og læg
-indholdet i `/volume1/docker/frameio-export-watcher` med File Station.
+DSM leveres uden `git`, så ovenstående henter koden direkte. Vil I hellere have
+git — se afsnittet [Opdatering](#opdatering).
 
-### 3. Find det rigtige UID/GID
+### 3. Tjek stien og adgangen
 
-Containeren skal køre som en bruger, der kan læse produktionsmappen:
+Tjek at stien i `volumes:` i `docker-compose.yml` passer til jeres share:
 
-```bash
-ls -ln /volume1/AktiveProjekter | head
-# eller, hvis du kender brugeren der ejer filerne:
-id dinbruger
+```yaml
+- /volume1/AktiveProjekter:/data/AktiveProjekter:ro
 ```
 
-Skriv de to tal ind som `PUID` og `PGID` i `docker-compose.yml`, og tjek samtidig
-at stien i `volumes:` passer til jeres share (`/volume1/AktiveProjekter`).
 Det er kun **venstre** side af kolonet, der er stien på NAS'en — højre side
 (`/data/AktiveProjekter`) er stien inde i containeren, og den er den, som
 `watch.root` i `config.yaml` peger på. Lad den stå.
 
-Viser `ls -ldn` noget i stil med `d---------+`, har sharet **ingen**
-POSIX-rettigheder, og adgangen styres alene af DSM's ACL'er (det er `+`'et).
-Så bliver ethvert almindeligt UID afvist. To muligheder:
+Containeren kører som standard som **root** (`user: "0:0"`), fordi
+Synology-shares typisk slet ikke har POSIX-rettigheder:
 
-* **Hurtigt:** fjern kommentaren fra `#user: "0:0"` i `docker-compose.yml`, så
-  containeren kører som root. Kræver ingen ombygning, og sharet er stadig
-  monteret read-only.
-* **Pænere:** giv en DSM-bruger læseadgang til sharet i **Kontrolpanel → Delt
-  mappe → Rediger → Tilladelser**, find brugerens UID med `id brugernavn`, og
-  sæt det som `PUID`. Test at det virker, før du bygger om:
+```bash
+ls -ldn /volume1/AktiveProjekter
+# d---------+ 1 0 0 400 Aug 24 07:11 /volume1/AktiveProjekter
+```
 
-  ```bash
-  sudo -u '#1026' ls /volume1/AktiveProjekter    # udskift 1026 med dit UID
-  ```
+`d---------` betyder ingen rettigheder for nogen, og `+` betyder at adgangen
+styres af DSM's ACL'er. Så findes der ikke noget almindeligt UID at køre som.
+Mounten er read-only, så containeren kan under ingen omstændigheder skrive til
+produktionsmappen.
+
+Har jeres share derimod almindelige POSIX-rettigheder, kan I køre som en
+ikke-privilegeret bruger: kommentér `user: "0:0"` ud, og sæt `PUID`/`PGID` til
+tallene fra `ls -ldn`. Test at brugeren faktisk kan læse mappen, før I bygger om:
+
+```bash
+sudo -u '#1026' ls /volume1/AktiveProjekter    # udskift 1026 med dit UID
+```
 
 ### 4. Læg credentials og config på plads
 
@@ -237,6 +238,36 @@ Alt er dokumenteret i [`config.example.yaml`](config.example.yaml). De vigtigste
 Hemmeligheder kommer kun fra miljøvariable — aldrig fra YAML-filen:
 `FRAMEIO_CLIENT_ID`, `FRAMEIO_CLIENT_SECRET`, `FRAMEIO_LEGACY_TOKEN` (alle
 findes også som `…_FILE`, der peger på en fil med værdien).
+
+## Opdatering
+
+Har NAS'en `git`, er det bare:
+
+```bash
+cd /volume1/docker/frameio-export-watcher
+git pull
+docker compose up -d --build
+```
+
+Har den ikke, kan koden hentes direkte uden at installere noget:
+
+```bash
+cd /volume1/docker/frameio-export-watcher
+curl -L https://github.com/Gerlif/final_tools/archive/refs/heads/claude/synology-frameio-uploader-yu9pw3.tar.gz \
+    | tar xz --strip-components=1
+docker compose up -d --build
+```
+
+`config.yaml` og `.env` ligger ikke i repoet og bliver derfor ikke rørt af nogen
+af delene. `docker-compose.yml` bliver derimod overskrevet, så har I rettet
+stien, `PUID`/`PGID` eller andet i den, skal det sættes igen bagefter.
+
+Uploadhistorikken ligger i Docker-volumet `frameio-state`, ikke i mappen, så
+den overlever både opdateringer og en helt frisk klon.
+
+Vil I have `git` på NAS'en, installeres den via **Pakkecenter → Git Server**.
+Pakken hedder "server", men det er den, der lægger `git`-kommandoen på plads,
+så den kan bruges over SSH.
 
 ## Drift
 
