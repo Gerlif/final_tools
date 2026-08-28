@@ -106,10 +106,20 @@ fejlbesked.
 
 ### 5. Byg og start
 
-```bash
-docker compose up -d --build      # DSM 7.2+ (Container Manager)
-# docker-compose up -d --build    # ældre DSM med Docker-pakken
+Find først ud af hvilken Compose I har:
 
+```bash
+docker compose version      # virker på DSM 7.2+ med Container Manager
+docker-compose version      # virker med den ældre Docker-pakke
+```
+
+Den, der svarer med et versionsnummer, er den I skal bruge. Fejler den første
+med `unknown shorthand flag: 'd'`, har I den ældre pakke, og **så skal alle
+`docker compose`-kommandoer i denne README skrives med bindestreg**:
+`docker-compose`.
+
+```bash
+docker compose up -d --build
 docker compose logs -f
 ```
 
